@@ -8,6 +8,8 @@ const contact = {
   instagram: 'https://instagram.com/squawk.us',
 };
 
+const formspreeEndpoint = 'https://formspree.io/f/squawkus';
+
 const studentServices = [
   'Student portfolio websites',
   'Enhanced student portfolios',
@@ -295,6 +297,8 @@ function Contact({ onBook }) {
 
 function BookingModal({ plan, onClose }) {
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({
     audience: '',
@@ -370,28 +374,38 @@ function BookingModal({ plan, onClose }) {
     return <label>What needs to be updated?<textarea name="maintenanceNeeds" value={form.maintenanceNeeds} onChange={update} required rows="5" placeholder="Describe the updates or maintenance work you need" /></label>;
   };
 
-  const submit = (event) => {
+  const submit = async (event) => {
     event.preventDefault();
-    const subject = `Website enquiry from ${form.name}`;
-    const body = [
-      `Who is this website for: ${form.audience}`,
-      `Plan: ${form.selectedPlan}`,
-      `Estimated total: ₹${total.toLocaleString('en-IN')}`,
-      isWebsitePlan ? `Pages requested: ${pageCount} (5 included, ${extraPages} extra)` : '',
-      `Name: ${form.name}`,
-      `Email: ${form.email}`,
-      `Phone: ${form.phone}`,
-      '',
-      'General project details:',
-      form.project,
-      '',
-      'Plan-specific details:',
-      ...Object.entries(form)
-        .filter(([key, value]) => value && !['audience', 'selectedPlan', 'name', 'email', 'phone', 'project', 'pages'].includes(key))
-        .map(([key, value]) => `${key}: ${value}`),
-    ].join('\n');
-    window.location.href = `mailto:${contact.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    setSubmitted(true);
+    setSubmitting(true);
+    setSubmitError('');
+    const details = Object.entries(form)
+      .filter(([, value]) => value)
+      .map(([key, value]) => `${key}: ${value}`)
+      .join('\n');
+    const payload = {
+      subject: `Website enquiry from ${form.name}`,
+      email: form.email,
+      name: form.name,
+      phone: form.phone,
+      plan: form.selectedPlan,
+      audience: form.audience,
+      estimatedTotal: `₹${total.toLocaleString('en-IN')}`,
+      pages: isWebsitePlan ? `${pageCount} total (${extraPages} extra)` : 'Not applicable',
+      message: `${details}\n\nEstimated total: ₹${total.toLocaleString('en-IN')}`,
+    };
+    try {
+      const response = await fetch(formspreeEndpoint, {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) throw new Error('Form submission failed');
+      setSubmitted(true);
+    } catch {
+      setSubmitError(`We could not send the enquiry right now. Please email ${contact.email} directly.`);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -454,8 +468,9 @@ function BookingModal({ plan, onClose }) {
                 <p className="order-summary__note">This is an estimated starting quote. We will confirm the final scope and amount after reviewing your details.</p>
                 <div className="booking-form__actions">
                   <button className="button booking-back" type="button" onClick={() => setStep(2)}>Back</button>
-                  <button className="button button--dark booking-submit" type="button" onClick={() => submit({ preventDefault: () => {} })}>Book order <Arrow /></button>
+                  <button className="button button--dark booking-submit" type="button" disabled={submitting} onClick={() => submit({ preventDefault: () => {} })}>{submitting ? 'Sending...' : 'Book order'} {!submitting && <Arrow />}</button>
                 </div>
+                {submitError && <p className="booking-error" role="alert">{submitError}</p>}
               </div>
             )}
           </>
